@@ -104,6 +104,7 @@ svg#map.drag{cursor:grabbing}
 .mapwrap.sat .scale{bottom:20px;color:#fff;text-shadow:0 0 3px #000}.mapwrap.sat .scale i{border-color:#fff}
 /* satellite tiles are plain images in an HTML layer under the SVG: phones scale these smoothly, unlike SVG images under a large zoom */
 #satL{position:absolute;inset:0;overflow:hidden;display:none;pointer-events:none;background:#0b1a24}
+/* keep the imagery layers composited while the map is dragged or zoomed */
 #satL>div{position:absolute;inset:0;transform-origin:0 0;will-change:transform;backface-visibility:hidden}
 #satL .st{opacity:0;will-change:opacity;transition:opacity .18s ease-out}
 @media(prefers-reduced-motion:reduce){#satL .st{transition:none}}
