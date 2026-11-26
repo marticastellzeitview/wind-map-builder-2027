@@ -104,7 +104,9 @@ svg#map.drag{cursor:grabbing}
 .mapwrap.sat .scale{bottom:20px;color:#fff;text-shadow:0 0 3px #000}.mapwrap.sat .scale i{border-color:#fff}
 /* satellite tiles are plain images in an HTML layer under the SVG: phones scale these smoothly, unlike SVG images under a large zoom */
 #satL{position:absolute;inset:0;overflow:hidden;display:none;pointer-events:none;background:#0b1a24}
-#satL div{position:absolute;inset:0;transform-origin:0 0}
+#satL>div{position:absolute;inset:0;transform-origin:0 0;will-change:transform;backface-visibility:hidden}
+#satL .st{opacity:0;will-change:opacity;transition:opacity .18s ease-out}
+@media(prefers-reduced-motion:reduce){#satL .st{transition:none}}
 #satL .st i{position:absolute;left:0;top:0;transform-origin:0 0;background-repeat:no-repeat;pointer-events:none}
 svg#map{position:relative}
 .mapwrap.sat{background:#0d1b22}
@@ -2222,7 +2224,7 @@ function addTile([z,x,y],par){const k=z+'/'+x+'/'+y;let tl=satTiles[k];if(tl){if
   const ys=[...Array(n+1)].map((_,j)=>py(t2lat(y+j/n,z)));const strips=[...Array(n)].map(()=>{const d=document.createElement('i');el.appendChild(d);return d});
   tl=satTiles[k]={img,el,strips,ys,n,url,z,loaded:false,X0:px(t2lon(x,z)),X1:px(t2lon(x+1,z)),Y0:ys[0],Y1:ys[n]};
   satPlace(tl);par.appendChild(el);
-  img.addEventListener('load',()=>{tl.loaded=true;strips.forEach(d=>d.style.backgroundImage=`url("${img.src}")`);el.style.visibility='';satOk++;satMsg();satSweep()});
+  img.addEventListener('load',()=>{tl.loaded=true;strips.forEach(d=>d.style.backgroundImage=`url("${img.src}")`);el.style.visibility='';el.style.opacity='1';satOk++;satMsg();satSweep()});
   img.addEventListener('error',()=>{if(img.crossOrigin){img.removeAttribute('crossorigin');img.src=url;return}tl.loaded=true;satBad++;satMsg();satSweep()});
   img.src=url;return k}
 // place one tile in screen pixels (snapped to whole pixels, so neighbouring strips and tiles meet without hairline gaps)
@@ -2234,7 +2236,7 @@ function satPlace(tl){const R=satRef||{S,X,Y};const l=Math.floor(R.X+tl.X0*R.S),
 var satRef=null,satIdle=0;
 function satFull(){clearTimeout(satIdle);satRef={S,X,Y};satBase.style.transform=satDet.style.transform='';for(const k in satTiles)satPlace(satTiles[k])}
 function satPos(){if(BASE!=='sat')return;if(!satRef){satFull();return}
-  const a=S/satRef.S,tf=`translate(${X-satRef.X*a}px,${Y-satRef.Y*a}px) scale(${a})`;satBase.style.transform=satDet.style.transform=tf;
+  const a=S/satRef.S,tf=`translate3d(${X-satRef.X*a}px,${Y-satRef.Y*a}px,0) scale(${a})`;satBase.style.transform=satDet.style.transform=tf;
   clearTimeout(satIdle);satIdle=setTimeout(satFull,140)}
 function satMsg(){satAttr.textContent=!satOk&&satBad>2?'Satellite imagery could not be loaded here':'Imagery © Esri, Maxar, Earthstar Geographics'+(plShown.length?' · Names © OpenStreetMap':'')}
 // while the map is moving, ask for new tiles at most every 350 ms and once more when it stops, so in-between zoom levels are not downloaded for nothing
