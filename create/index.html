@@ -69,6 +69,7 @@ td.m{font-family:var(--mono);font-size:12.5px}
 .prev{width:100%;height:600px;border:1px solid var(--rule);border-radius:10px;margin-top:14px;background:#e3eaee}
 .seg{display:inline-flex;background:#eef0f3;border-radius:10px;padding:4px;gap:4px;margin-bottom:16px;flex-wrap:wrap}
 .seg button{font:600 15px/1 var(--f);border:0;background:transparent;color:var(--muted);padding:10px 16px;border-radius:7px;cursor:pointer}
+.seg button:disabled{opacity:.45;cursor:not-allowed}
 .seg button.on{background:#fff;color:var(--brand);box-shadow:0 1px 3px rgba(28,40,48,.15)}
 .rlist{border:1px solid var(--rule);border-radius:10px;max-height:460px;overflow:auto}
 .rlist details{border-bottom:1px solid #edf0f2}.rlist details:last-child{border-bottom:0}
@@ -91,7 +92,7 @@ td.m{font-family:var(--mono);font-size:12.5px}
 
   <section class="card">
     <h2><span class="n">1</span>Project</h2>
-    <div class="seg" role="group" aria-label="Start from"><button type="button" id="modeNew" class="on" aria-pressed="true">New map</button><button type="button" id="modeAdd" aria-pressed="false">Add to an existing map</button><button type="button" id="modeRem" aria-pressed="false">Remove from an existing map</button></div>
+    <div class="seg" role="group" aria-label="Map actions"><button type="button" id="modeNew" class="on" aria-pressed="true">New map</button><button type="button" id="modeAdd" aria-pressed="false">Add to an existing map</button><button type="button" id="modeRem" aria-pressed="false">Remove from an existing map</button><button type="button" id="modeSheet" aria-pressed="false" disabled>Google Sheet</button></div>
     <div id="addBox" hidden>
       <label class="f" for="base" id="baseLbl">Link of the map you want to add turbines to</label>
       <div class="out"><input type="text" id="base" placeholder="Paste the map link here" autocomplete="off" spellcheck="false"><button class="btn sec" id="baseLoad" type="button">Load</button></div>
@@ -117,7 +118,7 @@ td.m{font-family:var(--mono);font-size:12.5px}
       <div class="fname" id="fname" hidden></div>
     </div>
     <input type="file" id="file" accept=".xlsx,.xlsm,.csv,.txt,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
-    <p class="links">Need a starting point? <a href="#" id="tpl">Download the template</a>. Files with one row per blade (install position A/B/C plus blade serial) work too.</p>
+    <p class="links">Need a starting point? <a href="#" id="tpl">Download the template</a>. Files with one row per blade (position, serial and optional equipment number) work too.</p>
     <div id="fileErr" class="note bad" hidden></div>
 
     <div id="mapping" hidden>
@@ -127,8 +128,10 @@ td.m{font-family:var(--mono);font-size:12.5px}
       </div>
       <div class="sub">Columns <span style="text-transform:none;letter-spacing:0;font-weight:400">· matched automatically, change any that are wrong</span></div>
       <div class="grid" id="cols"></div>
-      <div class="sub">Blade numbers <span style="text-transform:none;letter-spacing:0;font-weight:400">· your file has a column for each blade</span></div>
+      <div class="sub">Blade serial numbers <span style="text-transform:none;letter-spacing:0;font-weight:400">· your file has a column for each blade</span></div>
       <div class="grid" id="bcols"></div>
+      <div class="sub">Blade equipment numbers <span style="text-transform:none;letter-spacing:0;font-weight:400">· optional</span></div>
+      <div class="grid" id="beqcols"></div>
       <div class="sub">Or one row per blade <span style="text-transform:none;letter-spacing:0;font-weight:400">· only if each blade is a separate row, with its position and serial; leave as — otherwise</span></div>
       <div class="grid" id="bcols2"></div>
       <label class="chk"><input type="checkbox" id="short" checked><span>Shorten blade numbers to their last four digits (000034-PR65.4P3-53 → 0034). Short numbers stay as they are.</span></label>
@@ -149,9 +152,16 @@ td.m{font-family:var(--mono);font-size:12.5px}
       <label class="f" for="link" style="margin-top:16px">Link for your pilots</label>
       <div class="out"><input type="text" id="link" readonly><button class="btn" id="copy" type="button">Copy</button><button class="btn sec" id="share" type="button" hidden>Share</button><a class="btn sec" id="open" target="_blank" rel="noopener">Open ↗</a></div>
       <p class="hint" id="linkInfo"></p>
+      <button class="btn sec" id="openSheetTab" type="button">Go to Google Sheet tab</button>
       <div id="lenWarn" class="note warn" hidden></div>
       <iframe class="prev" id="prev" title="Map preview" loading="lazy"></iframe>
     </div>
+  </section>
+
+  <section class="card" id="sheetCard" hidden>
+    <h2>Google Sheets export</h2>
+    <p class="hint">Download an Excel spreadsheet with the columns in your requested layout, formatted and ready to open in Google Sheets.</p>
+    <div class="row"><button class="btn" id="downloadSheet" type="button">Download spreadsheet (.xlsx)</button><span class="hint" id="sheetHint" style="margin:0"></span></div>
   </section>
 </main>
 <script src="pako.min.js"></script>
@@ -192,23 +202,29 @@ function readCsv(text){const first=text.split(/\r?\n/).slice(0,5).join('\n');con
 
 // ---------- columns ----------
 const FIELDS=[
-  {k:'farm',l:'Wind farm',req:1,s:['windfarm','windfarmname','farm','farmname','site','sitename','park','parque','parqueeolico','parc','parceolic','plant','windpark','wf','project']},
-  {k:'pad',l:'Pad / turbine name',req:1,alt:'serial',s:['pad','padname','padid','turbine','turbinename','turbineid','wtg','wtgid','tower','asset','assetname','turbinenumber','aerogenerador','aerogerador','aero','turbina','wtgname','position','name']},
-  {k:'serial',l:'Turbine serial',s:['serial','serialnumber','turbineserial','turbineserialnumber','sn','esn','towerserial','serialno']},
+  {k:'farm',l:'Site name / wind farm',req:1,s:['windfarm','windfarmname','farm','farmname','site','sitename','park','parque','parqueeolico','parc','parceolic','plant','windpark','wf','project']},
+  {k:'pad',l:'Pad # / turbine name',req:1,alt:'serial',s:['pad','padname','padid','turbine','turbinename','turbineid','wtg','wtgid','tower','asset','assetname','turbinenumber','aerogenerador','aerogerador','aero','turbina','wtgname','position','name']},
+  {k:'serial',l:'WTG Serial #',s:['serial','serialnumber','turbineserial','turbineserialnumber','wtgserial','wtgserialnumber','sn','esn','towerserial','serialno']},
   {k:'lat',l:'Latitude',s:['latitude','lat','latitud','y','northing']},
   {k:'lon',l:'Longitude',s:['longitude','lon','lng','long','longitud','x','easting']},
   {k:'coords',l:'Coordinates (lat, lon in one cell)',s:['coordinates','coordinate','coords','coordenadas','coordenades','latlon','latlong','latlng','gps','location']},
-  {k:'model',l:'Turbine model',s:['model','turbinemodel','modelo','model2','wtgmodel','turbinetype','type']},
-  {k:'blen',l:'Blade length (m)',s:['bladelength','bladelengthm','bladelen','bladesize','length','longitudpala']},
+  {k:'model',l:'WTG Model',s:['model','turbinemodel','modelo','model2','wtgmodel','turbinetype','type']},
+  {k:'blen',l:'Blade Length (m)',s:['bladelength','bladelengthm','bladelen','bladesize','length','longitudpala']},
+  {k:'tower',l:'Tower Height (m)',s:['towerheight','towerheightm','towerheightmeters','towerheightmetres']},
   {k:'region',l:'Region (optional)',s:['region','regio','area','province','provincia','state','country','pais','comunidad']}];
 const BFIELDS=[
-  {k:'bA',l:'Blade A',s:['bladea','bladeaserial','bladeasn','pala a','blade1','bladeserial1','palaa']},
-  {k:'bB',l:'Blade B',s:['bladeb','bladebserial','bladebsn','blade2','bladeserial2','palab']},
-  {k:'bC',l:'Blade C',s:['bladec','bladecserial','bladecsn','blade3','bladeserial3','palac']},
+  {k:'bA',l:'Blade A Serial #',s:['bladea','bladeaserial','bladeasn','pala a','blade1','bladeserial1','palaa']},
+  {k:'bB',l:'Blade B Serial #',s:['bladeb','bladebserial','bladebsn','blade2','bladeserial2','palab']},
+  {k:'bC',l:'Blade C Serial #',s:['bladec','bladecserial','bladecsn','blade3','bladeserial3','palac']},
+  {k:'beA',l:'Blade A Equip #',s:['bladeaequip','bladeaequipment','bladeaequipmentnumber','bladeaequipnumber','bladeaequipmentid']},
+  {k:'beB',l:'Blade B Equip #',s:['bladebequip','bladebequipment','bladebequipmentnumber','bladebequipnumber','bladebequipmentid']},
+  {k:'beC',l:'Blade C Equip #',s:['bladecequip','bladecequipment','bladecequipmentnumber','bladecequipnumber','bladecequipmentid']},
   {k:'bpos',l:'Blade position (A, B or C)',s:['installposition','installpos','bladeposition','bladepos','installationposition','position2']},
-  {k:'bser',l:'Blade serial',s:['bladeserialnumber','bladeserial','bladesn','bladeserialno','bladenumber','bladeid','bladesnumber']}];
+  {k:'bser',l:'Blade serial',s:['bladeserialnumber','bladeserial','bladesn','bladeserialno','bladenumber','bladeid','bladesnumber']},
+  {k:'bequip',l:'Blade equip #',s:['bladeequipment','bladeequipmentnumber','bladeequip','bladeequipnumber','bladeequipmentid','equipmentnumber','equipnumber','equip','equipment']}];
 const ALL=[...FIELDS,...BFIELDS];
-let SHEETS=[],HDR=[],ROWS=[],MAP={},FILE='';
+let SHEETS=[],HDR=[],ROWS=[],MAP={},FILE='',EXPORT_TUR=null;
+function clearExport(){$('modeSheet').disabled=true;$('sheetCard').hidden=true;EXPORT_TUR=null}
 
 function autoMap(hdr){const H=hdr.map(norm);const used=new Set(),m={};
   // exact names first (in field priority), then names that contain a synonym
@@ -221,8 +237,8 @@ function findHeader(rows){let best=0,bs=-1;rows.slice(0,15).forEach((r,i)=>{cons
 function loadSheet(i){const sh=SHEETS[i];const h=findHeader(sh.rows);HDR=sh.rows[h].map((x,j)=>String(x).trim()||`Column ${j+1}`);ROWS=sh.rows.slice(h+1).filter(r=>r.some(x=>String(x).trim()!==''));
   MAP=autoMap(HDR);drawMap();update()}
 function sel(f){const v=MAP[f.k];return`<div data-k="${f.k}" class="${f.req&&v==null?'miss':''}"><label for="c_${f.k}">${esc(f.l)}${f.req?' <i>*</i>':''}</label><select id="c_${f.k}"><option value="">—</option>${HDR.map((h,j)=>`<option value="${j}"${v===j?' selected':''}>${esc(h)}</option>`).join('')}</select></div>`}
-function drawMap(){$('cols').innerHTML=FIELDS.map(sel).join('');$('bcols').innerHTML=BFIELDS.slice(0,3).map(sel).join('');$('bcols2').innerHTML=BFIELDS.slice(3).map(sel).join('');$('mapping').hidden=false;
-  document.querySelectorAll('#cols select,#bcols select,#bcols2 select').forEach(s=>s.onchange=()=>{const k=s.id.slice(2);if(s.value==='')delete MAP[k];else MAP[k]=+s.value;s.parentNode.classList.toggle('miss',!!FIELDS.find(f=>f.k===k&&f.req)&&s.value==='');update()})}
+function drawMap(){clearExport();$('cols').innerHTML=FIELDS.map(sel).join('');$('bcols').innerHTML=BFIELDS.slice(0,3).map(sel).join('');$('beqcols').innerHTML=BFIELDS.slice(3,6).map(sel).join('');$('bcols2').innerHTML=BFIELDS.slice(6).map(sel).join('');$('mapping').hidden=false;
+  document.querySelectorAll('#cols select,#bcols select,#beqcols select,#bcols2 select').forEach(s=>s.onchange=()=>{clearExport();const k=s.id.slice(2);if(s.value==='')delete MAP[k];else MAP[k]=+s.value;s.parentNode.classList.toggle('miss',!!FIELDS.find(f=>f.k===k&&f.req)&&s.value==='');update()})}
 
 // ---------- values ----------
 function num(v){v=String(v==null?'':v).trim();if(!v)return NaN;
@@ -244,7 +260,7 @@ function decodeLink(s){const m=String(s||'').match(/[#&]p=([A-Za-z0-9_\-]+)/);if
   try{let b=m[1].replace(/-/g,'+').replace(/_/g,'/');while(b.length%4)b+='=';const bin=atob(b);const u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
     const P=JSON.parse(pako.inflateRaw(u,{to:'string'}));return P&&P.v===1&&Array.isArray(P.t)&&Array.isArray(P.f)?P:null}catch(e){return null}}
 function baseTur(P){const S_=v=>v==null?'':String(v).trim();
-  return P.t.map(r=>({farm:S_(P.f[r[0]]),pad:S_(r[1]),sn:S_(r[2]),las:S_(r[3]),los:S_(r[4]),la:+r[3],lo:+r[4],model:S_(r[5]),blen:S_(r[6]),bl:[S_(r[7]),S_(r[8]),S_(r[9])],region:P.g?S_(P.g[r[0]]):''}))}
+  return P.t.map(r=>({farm:S_(P.f[r[0]]),pad:S_(r[1]),sn:S_(r[2]),las:S_(r[3]),los:S_(r[4]),la:+r[3],lo:+r[4],model:S_(r[5]),blen:S_(r[6]),bl:[S_(r[7]),S_(r[8]),S_(r[9])],tower:S_(r[10]),be:[S_(r[11]),S_(r[12]),S_(r[13])],blFull:[S_(r[14]||r[7]),S_(r[15]||r[8]),S_(r[16]||r[9])],region:P.g?S_(P.g[r[0]]):''}))}
 function loadBase(){const v=$('base').value.trim();BASE=null;$('result').hidden=true;
   if(!v){$('baseInfo').innerHTML='';if(ROWS.length)update();return}
   const P=decodeLink(v);
@@ -267,21 +283,23 @@ function remSum(){const left=BASE.tur.filter((t,i)=>!REM.has(i)),nf=new Set(left
     `<div class="note warn">Removing <b>${REM.size}</b> turbine${REM.size>1?'s':''}${whole?` (${whole} wind farm${whole>1?'s':''} entirely)`:''}. The new map will have <b>${left.length}</b> turbines in ${nf} wind farm${nf>1?'s':''}.</div>`;
   const ok=REM.size&&left.length;$('make').disabled=!ok;$('makeHint').textContent=ok?'':'Choose at least one turbine to remove.'}
 // new rows join the existing map; a turbine already there (same serial, or same wind farm and pad) is updated
-function merge(base,neu){const out=base.map(t=>({...t,bl:t.bl.slice()}));const bySn=new Map(),byPad=new Map();
+function merge(base,neu){const out=base.map(t=>({...t,bl:t.bl.slice(),be:(t.be||['','','']).slice(),blFull:(t.blFull||t.bl).slice()}));const bySn=new Map(),byPad=new Map();
   const kS=t=>t.sn?t.sn.toUpperCase():'',kP=t=>t.farm.toUpperCase()+'|'+t.pad.toUpperCase();
   out.forEach((t,i)=>{if(kS(t))bySn.set(kS(t),i);if(t.pad)byPad.set(kP(t),i)});let added=0,updated=0,same=0;
   neu.forEach(n=>{let i=kS(n)&&bySn.has(kS(n))?bySn.get(kS(n)):n.pad&&byPad.has(kP(n))?byPad.get(kP(n)):-1;
-    if(i<0){out.push({...n,bl:n.bl.slice()});added++;const j=out.length-1;if(kS(n))bySn.set(kS(n),j);if(n.pad)byPad.set(kP(n),j);return}
+    if(i<0){out.push({...n,bl:n.bl.slice(),be:(n.be||['','','']).slice(),blFull:(n.blFull||n.bl).slice()});added++;const j=out.length-1;if(kS(n))bySn.set(kS(n),j);if(n.pad)byPad.set(kP(n),j);return}
     const o=out[i];let ch=false;
-    ['pad','sn','las','los','model','blen','region'].forEach(f=>{if(n[f]&&n[f]!==o[f]){o[f]=n[f];ch=true}});
+    ['pad','sn','las','los','model','blen','tower','region'].forEach(f=>{if(n[f]&&n[f]!==o[f]){o[f]=n[f];ch=true}});
     if(ch){o.la=+o.las;o.lo=+o.los}
-    n.bl.forEach((v,j)=>{if(v&&v!==o.bl[j]){o.bl[j]=v;ch=true}});ch?updated++:same++});
+    n.bl.forEach((v,j)=>{if(v&&v!==o.bl[j]){o.bl[j]=v;ch=true}});n.be.forEach((v,j)=>{if(v&&v!==o.be[j]){o.be[j]=v;ch=true}});n.blFull.forEach((v,j)=>{if(v&&v!==o.blFull[j]){o.blFull[j]=v;ch=true}});ch?updated++:same++});
   return{tur:out,added,updated,same}}
-function setMode(m){MODE=m;[['modeNew','new'],['modeAdd','add'],['modeRem','rem']].forEach(([id,k])=>{$(id).classList.toggle('on',m===k);$(id).setAttribute('aria-pressed',m===k)});
-  $('addBox').hidden=m==='new';$('result').hidden=true;$('baseLbl').textContent=m==='rem'?'Link of the map you want to remove turbines from':'Link of the map you want to add turbines to';
-  $('fileCard').hidden=m==='rem';$('linkN').textContent=m==='rem'?'3':'4';
-  if(BASE)loadBase();
-  if(m!=='new'&&!$('base').value)$('base').focus();
+function setMode(m){if(m==='sheet'&&!EXPORT_TUR)return;if((m==='add'||m==='rem')&&m!==MODE)clearExport();MODE=m;[['modeNew','new'],['modeAdd','add'],['modeRem','rem'],['modeSheet','sheet']].forEach(([id,k])=>{$(id).classList.toggle('on',m===k);$(id).setAttribute('aria-pressed',m===k)});
+  $('addBox').hidden=!(m==='add'||m==='rem');$('result').hidden=true;$('baseLbl').textContent=m==='rem'?'Link of the map you want to remove turbines from':'Link of the map you want to add turbines to';
+  $('fileCard').hidden=m==='rem'||m==='sheet';$('sheetCard').hidden=m!=='sheet';$('linkCard').hidden=m==='sheet';$('linkN').textContent=m==='rem'?'3':'4';
+  if(m==='sheet'){$('remCard').hidden=true;$('sumCard').hidden=true;$('sheetHint').textContent=`${EXPORT_TUR.length} turbine${EXPORT_TUR.length===1?'':'s'} ready to download.`;$('sheetCard').scrollIntoView({behavior:'smooth',block:'start'});return}
+  $('sheetCard').hidden=true;
+  if((m==='add'||m==='rem')&&BASE)loadBase();
+  if((m==='add'||m==='rem')&&!$('base').value)$('base').focus();
   if(m==='rem'){$('sumCard').hidden=true;remDraw()}else{$('remCard').hidden=true;if(ROWS.length)update();else{$('sumCard').hidden=true;$('linkCard').hidden=true}}}
 function build(){const issues=[],tur=[],byKey=new Map();let noCoord=0,badCoord=0,noFarm=0;const longF=MAP.bpos!=null&&MAP.bser!=null;
   ROWS.forEach((r,ri)=>{const farm=cell(r,'farm').replace(/\s+/g,' '),pad=cell(r,'pad'),sn=cell(r,'serial');
@@ -292,10 +310,11 @@ function build(){const issues=[],tur=[],byKey=new Map();let noCoord=0,badCoord=0
     let t=byKey.get(key);
     if(!t){if(isNaN(la)||isNaN(lo)){noCoord++;return}
       if(Math.abs(la)>90||Math.abs(lo)>180){badCoord++;return}
-      t={farm,pad,sn,la,lo,las,los,model:cell(r,'model'),blen:cell(r,'blen').replace(',','.'),region:cell(r,'region'),bl:['','',''],row:ri};byKey.set(key,t);tur.push(t)}
+      t={farm,pad,sn,la,lo,las,los,model:cell(r,'model'),blen:cell(r,'blen').replace(',','.'),tower:cell(r,'tower').replace(',','.'),region:cell(r,'region'),bl:['','',''],be:['','',''],blFull:['','',''],row:ri};byKey.set(key,t);tur.push(t)}
     else if(!longF){t.dupe=(t.dupe||1)+1}
-    ['bA','bB','bC'].forEach((k,j)=>{const v=blade(cell(r,k));if(v)t.bl[j]=v});
-    if(longF){const p=posOf(cell(r,'bpos'));const v=blade(cell(r,'bser'));if(p>=0&&v)t.bl[p]=v}});
+    ['bA','bB','bC'].forEach((k,j)=>{const raw=cell(r,k),v=blade(raw);if(v){t.bl[j]=v;t.blFull[j]=raw}});
+    ['beA','beB','beC'].forEach((k,j)=>{const v=cell(r,k);if(v)t.be[j]=v});
+    if(longF){const p=posOf(cell(r,'bpos')),raw=cell(r,'bser'),v=blade(raw),eq=cell(r,'bequip');if(p>=0&&v){t.bl[p]=v;t.blFull[p]=raw}if(p>=0&&eq)t.be[p]=eq}});
   if(noFarm)issues.push(['warn',`${noFarm} row${noFarm>1?'s':''} without a wind farm name were left out.`]);
   if(noCoord)issues.push(['warn',`${noCoord} turbine${noCoord>1?'s':''} without coordinates ${noCoord>1?'were':'was'} left out.`]);
   if(badCoord)issues.push(['warn',`${badCoord} turbine${badCoord>1?'s':''} with impossible coordinates ${badCoord>1?'were':'was'} left out. Check that latitude and longitude aren't swapped.`]);
@@ -323,9 +342,9 @@ function update(){$('result').hidden=true;const reqOk=MAP.farm!=null&&(MAP.pad!=
   else{$('nT').textContent=b.tur.length;$('nF').textContent=Object.keys(b.farms).length;$('nR').textContent=regs.size||'Auto'}
   if(MODE==='add'&&!BASE)addNote='<div class="note warn">Paste the link of the existing map in step 1 to add these turbines to it.</div>';
   $('issues').innerHTML=addNote+b.issues.map(([c,m,l])=>`<div class="note ${c}">${esc(m)}${l?`<ul>${l.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:''}</div>`).join('')+(regs.size?'':'<div class="note info">No region column: farms are grouped by country.</div>');
-  const sh=b.tur.slice(0,200);const hasB=b.tur.some(t=>t.bl.some(Boolean)),hasM=b.tur.some(t=>t.model||t.blen);
-  $('prevT').innerHTML=`<thead><tr><th>Wind farm</th><th>Pad</th><th>Serial</th><th>Latitude</th><th>Longitude</th>${hasM?'<th>Model</th><th>Blade length</th>':''}${hasB?'<th>A</th><th>B</th><th>C</th>':''}${regs.size?'<th>Region</th>':''}</tr></thead><tbody>`+
-    sh.map(t=>`<tr><td>${esc(t.farm)}</td><td>${esc(t.pad)}</td><td class="m">${esc(t.sn)}</td><td class="m">${esc(t.las)}</td><td class="m">${esc(t.los)}</td>${hasM?`<td>${esc(t.model)}</td><td>${esc(t.blen)}</td>`:''}${hasB?t.bl.map(v=>`<td class="m">${esc(v)}</td>`).join(''):''}${regs.size?`<td>${esc(t.region)}</td>`:''}</tr>`).join('')+'</tbody>'+(b.tur.length>200?`<tfoot><tr><td colspan="12" style="color:var(--muted)">…and ${b.tur.length-200} more</td></tr></tfoot>`:'');
+  const sh=b.tur.slice(0,200);const hasB=b.tur.some(t=>t.bl.some(Boolean)),hasM=b.tur.some(t=>t.model||t.blen),hasTower=b.tur.some(t=>t.tower),hasEquip=b.tur.some(t=>(t.be||[]).some(Boolean));
+  $('prevT').innerHTML=`<thead><tr><th>Wind farm</th><th>Pad</th><th>Serial</th><th>Latitude</th><th>Longitude</th>${hasM?'<th>Model</th><th>Blade length</th>':''}${hasTower?'<th>Tower height</th>':''}${hasB?'<th>Blade A</th><th>Blade B</th><th>Blade C</th>':''}${hasEquip?'<th>A equip #</th><th>B equip #</th><th>C equip #</th>':''}${regs.size?'<th>Region</th>':''}</tr></thead><tbody>`+
+    sh.map(t=>`<tr><td>${esc(t.farm)}</td><td>${esc(t.pad)}</td><td class="m">${esc(t.sn)}</td><td class="m">${esc(t.las)}</td><td class="m">${esc(t.los)}</td>${hasM?`<td>${esc(t.model)}</td><td>${esc(t.blen)}</td>`:''}${hasTower?`<td>${esc(t.tower)}</td>`:''}${hasB?t.bl.map(v=>`<td class="m">${esc(v)}</td>`).join(''):''}${hasEquip?t.be.map(v=>`<td class="m">${esc(v)}</td>`).join(''):''}${regs.size?`<td>${esc(t.region)}</td>`:''}</tr>`).join('')+'</tbody>'+(b.tur.length>200?`<tfoot><tr><td colspan="15" style="color:var(--muted)">…and ${b.tur.length-200} more</td></tr></tfoot>`:'');
   const blocked=MODE==='add'&&!BASE;$('make').disabled=!b.tur.length||blocked;$('makeHint').textContent=blocked?'Load the existing map first.':b.tur.length?'':'No turbines to put on the map yet.'}
 
 // ---------- link ----------
@@ -333,10 +352,12 @@ function b64url(u8){let s='';for(let i=0;i<u8.length;i+=0x8000)s+=String.fromCha
 function makeLink(){const b=BUILT;let TUR;
   if(MODE==='rem'){if(!BASE)return;TUR=BASE.tur.filter((t,i)=>!REM.has(i));if(!REM.size||!TUR.length)return}
   else{if(!b||!b.tur.length)return;if(MODE==='add'&&!BASE)return;TUR=MODE==='add'&&MERGED?MERGED:b.tur}
+  EXPORT_TUR=TUR.map(t=>({...t,bl:t.bl.slice(),be:(t.be||['','','']).slice(),blFull:(t.blFull||t.bl).slice()}));$('modeSheet').disabled=false;
   const fn=[],fi={},fg=[];TUR.forEach(t=>{const k=t.farm.toUpperCase();if(fi[k]==null){fi[k]=fn.length;fn.push(t.farm.toUpperCase());fg.push('')}if(t.region&&!fg[fi[k]])fg[fi[k]]=t.region});
   const name=$('pname').value.trim()||'Wind Turbine Map';
+  const extended=TUR.some(t=>t.tower||(t.be||[]).some(Boolean)||(t.blFull||t.bl).some((v,j)=>v&&v!==t.bl[j]));
   const d=new Date();const P={v:1,n:name,d:`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`,f:fn,
-    t:TUR.map(t=>{const r=[fi[t.farm.toUpperCase()],t.pad,t.sn,t.las,t.los,t.model,t.blen,...t.bl];while(r.length>5&&r[r.length-1]==='')r.pop();return r})};
+    t:TUR.map(t=>{const r=[fi[t.farm.toUpperCase()],t.pad,t.sn,t.las,t.los,t.model,t.blen,...t.bl];if(extended){while(r.length<10)r.push('');r.push(t.tower||'',...(t.be||['','','']),...(t.blFull||t.bl))}else{while(r.length>5&&r[r.length-1]==='')r.pop()}return r})};
   if(fg.some(Boolean))P.g=fg;
   const data=b64url(pako.deflateRaw(JSON.stringify(P),{level:9}));
   const url=new URL('../',location.href).href.split('#')[0]+'#p='+data;
@@ -346,8 +367,35 @@ function makeLink(){const b=BUILT;let TUR;
   if(L>=8000)$('lenWarn').textContent=L>60000?`This link is very long (${Math.round(L/1000)}k characters) and may not open everywhere. Split the project into smaller files if pilots can't open it.`:`The link is long (${Math.round(L/1000)}k characters). It works when pasted in WhatsApp, email or Teams; if a chat app cuts it, send it by email.`;
   $('share').hidden=!navigator.share;$('result').scrollIntoView({behavior:'smooth',block:'start'})}
 
+function xmlEsc(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;')}
+function colName(n){let s='';for(n++;n;n=Math.floor((n-1)/26))s=String.fromCharCode(65+(n-1)%26)+s;return s}
+function crc32(bytes){let c=0xffffffff;for(const b of bytes)c=CRC32[(c^b)&255]^(c>>>8);return(c^0xffffffff)>>>0}
+const CRC32=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xedb88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function zipStored(files){const enc=new TextEncoder(),local=[],central=[];let offset=0;
+  files.forEach(([name,content])=>{const nb=enc.encode(name),data=enc.encode(content),crc=crc32(data),l=new Uint8Array(30+nb.length+data.length),ld=new DataView(l.buffer);
+    ld.setUint32(0,0x04034b50,true);ld.setUint16(4,20,true);ld.setUint16(6,0x0800,true);ld.setUint16(8,0,true);ld.setUint32(14,crc,true);ld.setUint32(18,data.length,true);ld.setUint32(22,data.length,true);ld.setUint16(26,nb.length,true);l.set(nb,30);l.set(data,30+nb.length);local.push(l);
+    const c=new Uint8Array(46+nb.length),cd=new DataView(c.buffer);cd.setUint32(0,0x02014b50,true);cd.setUint16(4,20,true);cd.setUint16(6,20,true);cd.setUint16(8,0x0800,true);cd.setUint16(10,0,true);cd.setUint32(16,crc,true);cd.setUint32(20,data.length,true);cd.setUint32(24,data.length,true);cd.setUint16(28,nb.length,true);cd.setUint32(42,offset,true);c.set(nb,46);central.push(c);offset+=l.length});
+  const cdOffset=offset,cdSize=central.reduce((n,p)=>n+p.length,0),end=new Uint8Array(22),ed=new DataView(end.buffer);ed.setUint32(0,0x06054b50,true);ed.setUint16(8,files.length,true);ed.setUint16(10,files.length,true);ed.setUint32(12,cdSize,true);ed.setUint32(16,cdOffset,true);
+  const all=[...local,...central,end],out=new Uint8Array(all.reduce((n,p)=>n+p.length,0));let at=0;all.forEach(p=>{out.set(p,at);at+=p.length});return out}
+function downloadSheet(){if(!EXPORT_TUR?.length)return;const headers=['Site Name','Pad #','WTG Serial #','Latitude','Longitude','WTG Model','Blade Length (m)','Tower Height (m)','Blade A Serial #','Blade B Serial #','Blade C Serial #','Blade A Equip #','Blade B Equip #','Blade C Equip #'];
+  const rows=[headers,...EXPORT_TUR.map(t=>[t.farm,t.pad,t.sn,t.las,t.los,t.model,t.blen,t.tower,...(t.blFull||t.bl),...(t.be||['','',''])])],xmlCell=(ri,ci,v)=>{if(v==null||v==='')return'';const ref=colName(ci)+(ri+1),s=String(v).trim();
+    if(ri===0)return`<c r="${ref}" s="1" t="inlineStr"><is><t xml:space="preserve">${xmlEsc(s)}</t></is></c>`;
+    if([3,4,6,7].includes(ci)&&/^[-+]?\d+(?:\.\d+)?$/.test(s))return`<c r="${ref}"><v>${s}</v></c>`;
+    return`<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xmlEsc(s)}</t></is></c>`};
+  const sheetRows=rows.map((r,i)=>`<row r="${i+1}"${i===0?' ht="32" customHeight="1"':''}>${r.map((v,j)=>xmlCell(i,j,v)).join('')}</row>`).join('');
+  const widths=[24,12,20,14,14,20,16,16,20,20,20,18,18,18],cols=widths.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join(''),last=rows.length;
+  const sheet=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetPr><tabColor rgb="FF544CF6"/></sheetPr><sheetViews><sheetView showGridLines="1" tabSelected="1" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews><cols>${cols}</cols><sheetData>${sheetRows}</sheetData><autoFilter ref="A1:N${last}"/></worksheet>`;
+  const styles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Arial"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Arial"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1F3B60"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left/><right/><top/><bottom style="thin"><color rgb="FFCBD4DF"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+  const files=[['[Content_Types].xml','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'],
+    ['_rels/.rels','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
+    ['xl/workbook.xml','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView activeTab="0"/></bookViews><sheets><sheet name="Wind Turbines" sheetId="1" r:id="rId1"/></sheets></workbook>'],
+    ['xl/_rels/workbook.xml.rels','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'],
+    ['xl/worksheets/sheet1.xml',sheet],['xl/styles.xml',styles]];
+  const xlsx=zipStored(files),a=document.createElement('a'),safe=($('pname').value.trim()||'wind-map').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'wind-map';
+  a.href=URL.createObjectURL(new Blob([xlsx],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));a.download=`${safe}-turbines.xlsx`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
+
 // ---------- events ----------
-async function openFile(f){if(!f)return;$('fileErr').hidden=true;FILE=f.name;$('fname').textContent=f.name;$('fname').hidden=false;
+async function openFile(f){if(!f)return;clearExport();$('fileErr').hidden=true;FILE=f.name;$('fname').textContent=f.name;$('fname').hidden=false;
   try{const buf=await f.arrayBuffer();const u=new Uint8Array(buf);
     if(u[0]===0x50&&u[1]===0x4b)SHEETS=readXlsx(buf);
     else if(u[0]===0xd0&&u[1]===0xcf)throw new Error('This is an old Excel file (.xls). Open it in Excel and save it as .xlsx or .csv, then upload that.');
@@ -358,23 +406,25 @@ async function openFile(f){if(!f)return;$('fileErr').hidden=true;FILE=f.name;$('
     $('sheet').innerHTML=SHEETS.map((s,i)=>`<option value="${i}"${i===bi?' selected':''}>${esc(s.name)} (${s.rows.length} rows)</option>`).join('');$('sheetRow').hidden=SHEETS.length<2;
     if(!$('pname').value.trim()&&MODE!=='add')$('pname').value=f.name.replace(/\.[^.]+$/,'').replace(/[_]+/g,' ').trim();
     loadSheet(bi)}
-  catch(e){$('mapping').hidden=true;$('sumCard').hidden=true;$('linkCard').hidden=true;$('fileErr').textContent=e.message&&e.message.length>8?e.message:'This file could not be read. Upload an .xlsx or .csv file.';$('fileErr').hidden=false}}
-$('modeNew').onclick=()=>setMode('new');$('modeAdd').onclick=()=>setMode('add');$('modeRem').onclick=()=>setMode('rem');
+  catch(e){clearExport();$('mapping').hidden=true;$('sumCard').hidden=true;$('linkCard').hidden=true;$('fileErr').textContent=e.message&&e.message.length>8?e.message:'This file could not be read. Upload an .xlsx or .csv file.';$('fileErr').hidden=false}}
+$('modeNew').onclick=()=>setMode('new');$('modeAdd').onclick=()=>setMode('add');$('modeRem').onclick=()=>setMode('rem');$('modeSheet').onclick=()=>setMode('sheet');
 $('remQ').oninput=remDraw;$('remClear').onclick=()=>{REM=new Set();remDraw()};
 $('remList').addEventListener('click',e=>{if(e.target.matches('summary input'))e.stopPropagation()});
-$('remList').addEventListener('change',e=>{const c=e.target;if(c.dataset.farm!=null){const f=remFarms().find(x=>x.name===c.dataset.farm);f.idx.forEach(i=>c.checked?REM.add(i):REM.delete(i))}else if(c.dataset.i!=null){const i=+c.dataset.i;c.checked?REM.add(i):REM.delete(i)}remDraw()});
-$('baseLoad').onclick=loadBase;$('base').addEventListener('paste',()=>setTimeout(loadBase,0));$('base').addEventListener('change',loadBase);$('base').addEventListener('keydown',e=>{if(e.key==='Enter')loadBase()});
+$('remList').addEventListener('change',e=>{const c=e.target;if(c.dataset.farm!=null){const f=remFarms().find(x=>x.name===c.dataset.farm);f.idx.forEach(i=>c.checked?REM.add(i):REM.delete(i))}else if(c.dataset.i!=null){const i=+c.dataset.i;c.checked?REM.add(i):REM.delete(i)}clearExport();remDraw()});
+$('baseLoad').onclick=()=>{clearExport();loadBase()};$('base').addEventListener('paste',()=>setTimeout(()=>{clearExport();loadBase()},0));$('base').addEventListener('change',()=>{clearExport();loadBase()});$('base').addEventListener('keydown',e=>{if(e.key==='Enter'){clearExport();loadBase()}});
 $('sheet').onchange=e=>loadSheet(+e.target.value);
-$('short').onchange=update;$('pname').oninput=()=>{$('result').hidden=true};
+$('short').onchange=()=>{clearExport();update()};$('pname').oninput=()=>{clearExport();$('result').hidden=true};
 const drop=$('drop');drop.onclick=()=>$('file').click();drop.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('file').click()}};
 $('file').onchange=e=>{openFile(e.target.files[0]);e.target.value=''};
 ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over')}));
 ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over')}));
 drop.addEventListener('drop',e=>openFile(e.dataTransfer.files[0]));
 $('make').onclick=makeLink;
+$('downloadSheet').onclick=downloadSheet;
+$('openSheetTab').onclick=()=>setMode('sheet');
 $('copy').onclick=async()=>{const i=$('link');try{await navigator.clipboard.writeText(i.value)}catch(e){i.select();document.execCommand('copy')}$('copy').textContent='Copied ✓';setTimeout(()=>$('copy').textContent='Copy',1800)};
 $('share').onclick=()=>navigator.share({title:$('pname').value.trim()||'Wind Turbine Map',url:$('link').value}).catch(()=>{});
-$('tpl').onclick=e=>{e.preventDefault();const csv='﻿Wind Farm,Pad,Serial,Latitude,Longitude,Model,Blade Length (m),Blade A,Blade B,Blade C,Region\r\nEXAMPLE FARM I,WTG01,58210001,41.395530,-0.859992,GE 5.5-158,77.4,0001,0002,0003,Aragon\r\nEXAMPLE FARM I,WTG02,58210002,41.398277,-0.847893,GE 5.5-158,77.4,0004,0005,0006,Aragon\r\n';
+$('tpl').onclick=e=>{e.preventDefault();const csv='﻿Wind Farm,Pad,Serial,Latitude,Longitude,Model,Blade Length (m),Tower Height (m),Blade A,Blade B,Blade C,Blade A Equip #,Blade B Equip #,Blade C Equip #,Region\r\nEXAMPLE FARM I,WTG01,58210001,41.395530,-0.859992,GE 5.5-158,77.4,120,0001,0002,0003,EQ0001,EQ0002,EQ0003,Aragon\r\nEXAMPLE FARM I,WTG02,58210002,41.398277,-0.847893,GE 5.5-158,77.4,120,0004,0005,0006,EQ0004,EQ0005,EQ0006,Aragon\r\n';
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='map-template.csv';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)};
 </script>
 </body>
